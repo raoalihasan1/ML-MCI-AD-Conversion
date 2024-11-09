@@ -1,1 +1,1 @@
-# Mild Cognitive Impairment to Alzheimer's Disease Conversion
+# MCI to AD Conversion
