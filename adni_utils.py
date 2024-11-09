@@ -1,5 +1,5 @@
 import pandas as pd
-from typing import Callable, Any
+from typing import Any, Callable
 
 INPUT_DIR = "./raw_data"
 OUTPUT_DIR = "./output_data"
