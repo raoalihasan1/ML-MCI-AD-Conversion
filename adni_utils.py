@@ -248,7 +248,7 @@ def statistics_df_of_df(
     - Maximum Value
 
     It drops any NaN values before performing the calculations, and
-    optionally, specific columns can be excluded from the analysis
+    optionally, specific columns can be excluded from the analysis.
 
     Args:
         pd.DataFrame: The input DataFrame containing the numerical data.
