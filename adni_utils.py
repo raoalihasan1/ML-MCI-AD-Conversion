@@ -227,3 +227,67 @@ def replace_nan_with_surrounding_matching_val(
                 # Replace NaN with the above and below matching value
                 df.loc[i, column_name] = df.loc[i - 1, column_name]
     return df
+
+
+def statistics_df_of_df(
+    df: pd.DataFrame, exclusion_cols: list[str] = []
+) -> pd.DataFrame:
+    """
+    Computes common statistical measures for the numeric columns in a DataFrame
+    and returns a new DataFrame containing those statistics.
+
+    This function calculates the following statistics for each numeric column:
+    - Mean
+    - Count (Sample Size)
+    - Standard Deviation
+    - Median
+    - Range
+    - Interquartile Range (IQR)
+    - Skewness
+    - Minimum Value
+    - Maximum Value
+
+    It drops any NaN values before performing the calculations, and
+    optionally, specific columns can be excluded from the analysis
+
+    Args:
+        pd.DataFrame: The input DataFrame containing the numerical data.
+
+        list[str]: A list of column names to exclude from
+                   the statistics calculation. (Default is [])
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the calculated
+                      statistics for each numerical column.
+    """
+    filtered_df = df.drop(columns=exclusion_cols)
+    stats_df = pd.DataFrame(
+        columns=[
+            "Column",
+            "Count",
+            "Mean",
+            "Standard Deviation",
+            "Median",
+            "Range",
+            "IQR",
+            "Skew",
+            "Min",
+            "Max",
+        ]
+    )
+    for column in filtered_df.columns:
+        # Drop NaN values for the specific column
+        col_data = filtered_df[column].dropna().astype(float)
+        stats_df.loc[stats_df.shape[0]] = {
+            "Column": column,
+            "Count": len(col_data),
+            "Mean": col_data.mean().round(3),
+            "Standard Deviation": col_data.std().round(3),
+            "Median": col_data.median().round(3),
+            "Range": (col_data.max() - col_data.min()).round(3),
+            "IQR": (col_data.quantile(0.75) - col_data.quantile(0.25)).round(3),
+            "Skew": col_data.skew().round(3),
+            "Min": col_data.min().round(3),
+            "Max": col_data.max().round(3),
+        }
+    return stats_df
