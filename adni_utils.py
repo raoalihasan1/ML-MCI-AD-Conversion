@@ -80,7 +80,6 @@ def create_plasma_df(
     new_df.drop_duplicates(subset=ADNIMERGE_COLUMNS, inplace=True)
     new_df.dropna(inplace=True)
     new_df.reset_index(drop=True, inplace=True)
-
     return new_df
 
 
@@ -168,5 +167,4 @@ def remove_rows_not_in_adnimerge(
 
     # Print some statistics about the filtering
     print_no_of_rows_removed(df, filtered_df) if print_statistics else None
-
     return filtered_df
