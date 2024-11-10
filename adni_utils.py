@@ -51,10 +51,9 @@ def create_plasma_df(
               row to create values for the target column.
 
     Returns:
-        pd.DataFrame:
-            A new DataFrame containing the columns `RID`, `VISCODE`, and
-            `column_name`, with duplicate and missing values removed.
-            The DataFrame is reset with a continuous index.
+        pd.DataFrame: A new DataFrame containing the columns `RID`, `VISCODE`,
+                      and `column_name`, with duplicate and missing values
+                      removed. The DataFrame is reset with a continuous index.
     """
     # Create a dataframe with these specific columns
     new_df = pd.DataFrame(columns=["RID", "VISCODE", column_name])
@@ -95,6 +94,29 @@ def df_of_csv(filename: str, input_dir: bool = True) -> pd.DataFrame:
         pd.DataFrame: The DataFrame containing the CSV data.
     """
     return pd.read_csv(f"{INPUT_DIR if input_dir else OUTPUT_DIR}/{filename}.csv")
+
+
+def filter_n_years_from_bl(df: pd.DataFrame, n: int) -> pd.DataFrame:
+    """
+    Filters rows where `Years_bl` values are greater than or equal to n
+    (inclusive), indicating the n-year mark from the baseline. Then,
+    it removes duplicates within this subset, keeping only the first
+    occurrence of each unique `RID` value.
+
+    Args:
+        pd.DataFrame: The DataFrame containing columns `Years_bl` and `RID`.
+        int: Years from baseline to filter the data for.
+
+    Returns:
+        pd.DataFrame: A DataFrame filtered to rows with `Years_bl` values
+                      greater than or equal to n (inclusive), , and with
+                      duplicates removed based on `RID` (keeping only the
+                      first occurrence of each 'RID').
+    """
+    # Filter the df for the records that are >= than n years from the bl
+    n_years_from_bl = df[(df["Years_bl"] >= n)]
+    # Return only the first record for each RID of the filtered df
+    return n_years_from_bl.drop_duplicates(subset="RID", keep="first")
 
 
 def print_no_of_rows_removed(df: pd.DataFrame, df1: pd.DataFrame) -> None:
@@ -145,9 +167,8 @@ def remove_rows_not_in_adnimerge(
         bool: Controls whether to print statistics about the filtering.
 
     Returns:
-        pd.DataFrame:
-        A filtered DataFrame with rows matching only
-        those also present in the ADNIMERGE dataset.
+        pd.DataFrame: A filtered DataFrame with rows matching only
+                      those also present in the ADNIMERGE dataset.
     """
     # Some df have the column labelled as VISCODE,
     # so to standardise it, we rename it to VISCODE2
@@ -168,3 +189,41 @@ def remove_rows_not_in_adnimerge(
     # Print some statistics about the filtering
     print_no_of_rows_removed(df, filtered_df) if print_statistics else None
     return filtered_df
+
+
+def replace_nan_with_surrounding_matching_val(
+    df: pd.DataFrame, column_name: str
+) -> pd.DataFrame:
+    """
+    Fills NaN values in a specified column by matching values from adjacent rows
+    when certain conditions are met.
+
+    This function iterates through each row in the DataFrame, looking for
+    NaN values in the specified column. If a NaN is found in a row where:
+    - The `RID` value is the same in the row above, current, and the row below.
+    - The values in the specified column are identical in the rows immediately
+      above and below the NaN row.
+
+    If found, replace the NaN value with the matching surrounding value.
+
+    Args:
+        pd.DataFrame: The input DataFrame containing the data with NaN values
+                      to be replaced.
+        str: The name of the column where NaN values should be filled.
+
+    Returns:
+        pd.DataFrame: The modified DataFrame with NaN values in the specified
+                      columns replaced, if they met the above criteria.
+    """
+    for i in range(1, df.shape[0] - 1):
+        # Check if the value in the specified column is NaN
+        if pd.isna(df.loc[i, column_name]):
+            # Check if the RID above and below match the current RID and
+            # that the values in the above and below column are the same
+            if (
+                df.loc[i - 1, "RID"] == df.loc[i, "RID"] == df.loc[i + 1, "RID"]
+                and df.loc[i - 1, column_name] == df.loc[i + 1, column_name]
+            ):
+                # Replace NaN with the above and below matching value
+                df.loc[i, column_name] = df.loc[i - 1, column_name]
+    return df
