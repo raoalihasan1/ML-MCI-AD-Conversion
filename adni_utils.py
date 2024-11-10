@@ -7,25 +7,52 @@ DF_COLUMNS = ["RID", "VISCODE2"]
 ADNIMERGE_COLUMNS = ["RID", "VISCODE"]
 
 
+def create_bl_of_col(df: pd.DataFrame, column_name: str) -> pd.DataFrame:
+    """
+    Takes the baseline values of a specific column, creates a new
+    column in the DataFrame with that column name post-fixed with
+    `bl`, and inserts that bl value for each record for each `RID`.
+
+    Args:
+        pd.DataFrame: The input DataFrame containing `RID`,
+                      `VISCODE`, and the specified column.
+        str: The name of the column for which the bl values will be created.
+
+    Returns:
+        pd.DataFrame: A new DataFrame with an added column that
+                      contains bl values for the specified column.
+    """
+    bl_name = f"{column_name}_bl"
+    bl_values = df[df["VISCODE"] == "bl"][["RID", column_name]]
+    df = df.merge(
+        bl_values.rename(columns={column_name: bl_name}), on="RID", how="left"
+    )
+    for rid in df["RID"].unique():
+        bl_value = df.loc[df["RID"] == rid, bl_name].iloc[0]
+        if pd.notna(bl_value):
+            df.loc[df["RID"] == rid, bl_name] = bl_value
+    return df
+
+
 def create_plasma_df(
     column_name: str, df_lst_with_map_f: list[tuple[pd.DataFrame, Callable]]
 ) -> pd.DataFrame:
     """
     Constructs a single DataFrame from a list of DataFrames
     with a corresponding mapping functions, creating rows
-    with a specified column name, the 'RID', and 'VISCODE'.
+    with a specified column name, the `RID`, and `VISCODE`.
 
     Args:
         str: The name of the target column to be populated in the new DataFrame.
         list[tuple]:
             A list where each element is a tuple consisting of:
-            - A DataFrame containing columns 'RID' and 'VISCODE2'.
+            - A DataFrame containing columns `RID` and `VISCODE2`.
             - A mapping function that transforms each
               row to create values for the target column.
 
     Returns:
         pd.DataFrame:
-            A new DataFrame containing the columns 'RID', 'VISCODE', and
+            A new DataFrame containing the columns `RID`, `VISCODE`, and
             `column_name`, with duplicate and missing values removed.
             The DataFrame is reset with a continuous index.
     """
@@ -62,7 +89,7 @@ def df_of_csv(filename: str, input_dir: bool = True) -> pd.DataFrame:
     Reads a CSV file into a DataFrame from the specified directory.
 
     Args:
-        str: The name of the CSV file to read (without the '.csv' extension).
+        str: The name of the CSV file to read (without the `.csv` extension).
         bool: If True, finds the file in the INPUT_DIR, else from OUTPUT_DIR.
 
     Returns:
@@ -111,7 +138,7 @@ def remove_rows_not_in_adnimerge(
 ) -> pd.DataFrame:
     """
     Filters a DataFrame by retaining only the rows with
-    matching 'VISCODE2' and 'RID' in the ADNIMERGE dataset.
+    matching `VISCODE2` and `RID` in the ADNIMERGE dataset.
 
     Args:
         pd.DataFrame: The ADNIMERGE DataFrame.
