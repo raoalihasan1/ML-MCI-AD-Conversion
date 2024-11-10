@@ -119,6 +119,23 @@ def filter_n_years_from_bl(df: pd.DataFrame, n: int) -> pd.DataFrame:
     return n_years_from_bl.drop_duplicates(subset="RID", keep="first")
 
 
+def map_col_to_num(df: pd.DataFrame, column_name: str) -> pd.DataFrame:
+    """
+    Maps unique categorical values in a specified column of a DataFrame to integers.
+    This is useful for encoding categorical data as numerical values.
+
+    Args:
+        pd.DataFrame: The input DataFrame containing the column to be mapped.
+        str: The name of the column whose values should be mapped to integers.
+
+    Returns:
+        pd.DataFrame: A DataFrame with the specified column's values mapped to integers.
+    """
+    vals = df[column_name].unique()
+    df[column_name] = df[column_name].replace(vals, list(range(len(vals))))
+    return df
+
+
 def print_no_of_rows_removed(df: pd.DataFrame, df1: pd.DataFrame) -> None:
     """
     Print the number & percentage of rows removed after filtering a DataFrame.
