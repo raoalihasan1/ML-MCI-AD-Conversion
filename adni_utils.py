@@ -1,3 +1,4 @@
+import miceforest as mf
 import pandas as pd
 from typing import Any, Callable
 
@@ -134,6 +135,25 @@ def map_col_to_num(df: pd.DataFrame, column_name: str) -> pd.DataFrame:
     vals = df[column_name].unique()
     df[column_name] = df[column_name].replace(vals, list(range(len(vals))))
     return df
+
+
+def mice_forest_data_imputation(df: pd.DataFrame, iterations: int = 5) -> pd.DataFrame:
+    """
+    Imputes missing values in a DataFrame using the MICE (Multiple Imputation by
+    Chained Equations) algorithm with random forests from the `miceforest` library.
+
+    Args:
+        pd.DataFrame: The input DataFrame containing missing values to be imputed.
+        int: The number of MICE iterations to perform. (Default is 5)
+
+    Returns:
+        pd.DataFrame: A DataFrame with imputed values, containing no missing values.
+    """
+    kernel = mf.ImputationKernel(
+        df.reset_index(drop=True), num_datasets=4, random_state=0
+    )
+    kernel.mice(iterations=iterations)
+    return kernel.complete_data()
 
 
 def print_no_of_rows_removed(df: pd.DataFrame, df1: pd.DataFrame) -> None:
