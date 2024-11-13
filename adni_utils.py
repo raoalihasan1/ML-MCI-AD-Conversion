@@ -1,11 +1,20 @@
+import matplotlib.pyplot as plt
 import miceforest as mf
+import numpy as np
 import pandas as pd
+from enum import Enum
+from sklearn.impute import KNNImputer
 from typing import Any, Callable
 
 INPUT_DIR = "./raw_data"
 OUTPUT_DIR = "./output_data"
 DF_COLUMNS = ["RID", "VISCODE2"]
 ADNIMERGE_COLUMNS = ["RID", "VISCODE"]
+
+
+class Imputation_type(Enum):
+    Mice_forest = 1
+    Knn = 2
 
 
 def create_bl_of_col(df: pd.DataFrame, column_name: str) -> pd.DataFrame:
@@ -120,6 +129,50 @@ def filter_n_years_from_bl(df: pd.DataFrame, n: int) -> pd.DataFrame:
     return n_years_from_bl.drop_duplicates(subset="RID", keep="first")
 
 
+def cols_histogram_of_df(df: pd.DataFrame, title: str):
+    """
+    Generates and displays a set of histograms for each column in a DataFrame.
+
+    Args:
+        pd.DataFrame: The input DataFrame whose columns will be plotted as histograms.
+        str: The title of the entire plot, displayed at the top.
+
+    Returns:
+        None
+    """
+    rows = int(np.ceil(len(df.columns) / 3))
+    cols = 3
+    fig, ax = plt.subplots(rows, cols, figsize=(10, 11))
+
+    ax = ax.flatten()
+    fig.suptitle(title)
+    colors = plt.get_cmap("tab10")
+
+    for i, col in enumerate(df.columns):
+        ax[i].hist(
+            df[col].astype(float),
+            bins="auto",
+            color=colors(i),
+            edgecolor="black",
+        )
+        ax[i].set_xlabel(f"{col} Value", fontsize=9)
+        ax[i].set_ylabel("Frequency", fontsize=9)
+        ax[i].text(
+            0.985,
+            0.975,
+            str_of_df_col_stats(df, col),
+            transform=ax[i].transAxes,
+            fontsize=6,
+            verticalalignment="top",
+            horizontalalignment="right",
+            bbox=dict(
+                boxstyle="round", facecolor="#F7E7C7", edgecolor="black", alpha=0.5
+            ),
+        )
+    plt.tight_layout()
+    plt.show()
+
+
 def map_col_to_num(df: pd.DataFrame, column_name: str) -> pd.DataFrame:
     """
     Maps unique categorical values in a specified column of a DataFrame to integers.
@@ -137,23 +190,28 @@ def map_col_to_num(df: pd.DataFrame, column_name: str) -> pd.DataFrame:
     return df
 
 
-def mice_forest_data_imputation(df: pd.DataFrame, iterations: int = 5) -> pd.DataFrame:
+def data_imputation(df: pd.DataFrame, imputation: Imputation_type) -> pd.DataFrame:
     """
-    Imputes missing values in a DataFrame using the MICE (Multiple Imputation by
-    Chained Equations) algorithm with random forests from the `miceforest` library.
+    Imputes missing values in the input DataFrame using the specified imputation method.
 
     Args:
         pd.DataFrame: The input DataFrame containing missing values to be imputed.
-        int: The number of MICE iterations to perform. (Default is 5)
+        Imputation_type: The imputation method to be used for filling missing values.
 
     Returns:
         pd.DataFrame: A DataFrame with imputed values, containing no missing values.
     """
-    kernel = mf.ImputationKernel(
-        df.reset_index(drop=True), num_datasets=4, random_state=0
-    )
-    kernel.mice(iterations=iterations)
-    return kernel.complete_data()
+    match imputation:
+        case Imputation_type.Mice_forest:
+            kernel = mf.ImputationKernel(df, num_datasets=4, random_state=0)
+            kernel.mice(iterations=5)
+            return kernel.complete_data()
+        case Imputation_type.Knn:
+            return pd.DataFrame(
+                KNNImputer().fit_transform(df), columns=df.columns, index=df.index
+            )
+        case _:
+            return df
 
 
 def print_no_of_rows_removed(df: pd.DataFrame, df1: pd.DataFrame) -> None:
@@ -280,9 +338,9 @@ def statistics_df_of_df(
     - Median
     - Range
     - Interquartile Range (IQR)
-    - Skewness
     - Minimum Value
     - Maximum Value
+    - Skewness
 
     It drops any NaN values before performing the calculations, and
     optionally, specific columns can be excluded from the analysis.
@@ -303,13 +361,13 @@ def statistics_df_of_df(
             "Column",
             "Count",
             "Mean",
-            "Standard Deviation",
+            "STD",
             "Median",
             "Range",
             "IQR",
-            "Skew",
             "Min",
             "Max",
+            "Skew",
         ]
     )
     for column in filtered_df.columns:
@@ -319,12 +377,34 @@ def statistics_df_of_df(
             "Column": column,
             "Count": len(col_data),
             "Mean": col_data.mean().round(3),
-            "Standard Deviation": col_data.std().round(3),
+            "STD": col_data.std().round(3),
             "Median": col_data.median().round(3),
             "Range": (col_data.max() - col_data.min()).round(3),
             "IQR": (col_data.quantile(0.75) - col_data.quantile(0.25)).round(3),
-            "Skew": col_data.skew().round(3),
             "Min": col_data.min().round(3),
             "Max": col_data.max().round(3),
+            "Skew": col_data.skew().round(3),
         }
     return stats_df
+
+
+def str_of_df_col_stats(df: pd.DataFrame, col_name: str) -> str:
+    """
+    Generates a string representation of the stats for a specific column in a DataFrame.
+
+    Args:
+        pd.DataFrame: The DataFrame for which column statistics are to be computed.
+        str: The name of the column for which statistics should be extracted.
+
+    Returns:
+        str: A formatted string containing the statistics for the specified column.
+             Each statistic presented in the form of "statistic_name: statistic_value".
+    """
+    statistics_df = statistics_df_of_df(df)
+    stats = statistics_df[statistics_df["Column"] == col_name]
+    filtered_stats = stats.drop(columns=["Column"]).to_dict()
+    text = ""
+    for key, val in filtered_stats.items():
+        key_2 = next(iter(val))
+        text += f"{key}: {val[key_2]}\n"
+    return text
