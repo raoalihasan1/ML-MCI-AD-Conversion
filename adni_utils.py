@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from data_imputation import *
 from sklearn.impute import KNNImputer
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 from typing import Any, Callable
 
 INPUT_DIR = "./raw_data"
@@ -319,6 +320,27 @@ def replace_nan_with_surrounding_matching_val(
                 # Replace NaN with the above and below matching value
                 df.loc[i, column_name] = df.loc[i - 1, column_name]
     return df
+
+
+def compute_mse_and_mae(
+    true_df: pd.DataFrame, predicted_df: pd.DataFrame
+) -> tuple[float, float]:
+    """
+    Compute the Mean Squared Error (MSE) and Mean Absolute Error (MAE) between
+    the true and predicted values stored in DataFrames.
+
+    Args:
+        pd.DataFrame: A DataFrame containing the true values.
+        pd.DataFrame: A DataFrame containing the predicted values.
+
+    Returns:
+        tuple[float, float]: A tuple containing the MSE and MAE, in that order.
+            - The first value is the MSE (Mean Squared Error).
+            - The second value is the MAE (Mean Absolute Error).
+    """
+    mse = mean_squared_error(true_df, predicted_df)
+    mae = mean_absolute_error(true_df, predicted_df)
+    return float(mse), float(mae)
 
 
 def statistics_df_of_df(
