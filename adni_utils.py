@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import miceforest as mf
 import numpy as np
 import pandas as pd
-from enum import Enum
+from data_imputation import *
 from sklearn.impute import KNNImputer
 from typing import Any, Callable
 
@@ -10,11 +10,6 @@ INPUT_DIR = "./raw_data"
 OUTPUT_DIR = "./output_data"
 DF_COLUMNS = ["RID", "VISCODE2"]
 ADNIMERGE_COLUMNS = ["RID", "VISCODE"]
-
-
-class Imputation_type(Enum):
-    Mice_forest = 1
-    Knn = 2
 
 
 def create_bl_of_col(df: pd.DataFrame, column_name: str) -> pd.DataFrame:
@@ -202,13 +197,15 @@ def data_imputation(df: pd.DataFrame, imputation: Imputation_type) -> pd.DataFra
         pd.DataFrame: A DataFrame with imputed values, containing no missing values.
     """
     match imputation:
-        case Imputation_type.Mice_forest:
-            kernel = mf.ImputationKernel(df, num_datasets=4, random_state=0)
-            kernel.mice(iterations=5)
+        case Mice_forest(iterations, num_datasets):
+            kernel = mf.ImputationKernel(df, num_datasets=num_datasets, random_state=0)
+            kernel.mice(iterations=iterations)
             return kernel.complete_data()
-        case Imputation_type.Knn:
+        case Knn(n):
             return pd.DataFrame(
-                KNNImputer().fit_transform(df), columns=df.columns, index=df.index
+                KNNImputer(n_neighbors=n).fit_transform(df),
+                columns=df.columns,
+                index=df.index,
             )
         case _:
             return df
