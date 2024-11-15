@@ -182,7 +182,9 @@ def map_col_to_num(df: pd.DataFrame, column_name: str) -> pd.DataFrame:
         pd.DataFrame: A DataFrame with the specified column's values mapped to integers.
     """
     vals = df[column_name].unique()
-    df[column_name] = df[column_name].replace(vals, list(range(len(vals))))
+    numerical_vals = list(range(len(vals)))
+    df[column_name] = df[column_name].replace(vals, numerical_vals)
+    print(f"{column_name}:\t{vals} -> {numerical_vals}")
     return df
 
 
