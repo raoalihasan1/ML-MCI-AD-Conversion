@@ -94,7 +94,8 @@ def df_of_csv(filename: str, input_dir: bool = True) -> pd.DataFrame:
 
     Args:
         str: The name of the CSV file to read (without the `.csv` extension).
-        bool: If True, finds the file in the INPUT_DIR, else from OUTPUT_DIR.
+        bool: If True, find the file in the INPUT_DIR,
+              else from OUTPUT_DIR. (Default is True)
 
     Returns:
         pd.DataFrame: The DataFrame containing the CSV data.
@@ -336,7 +337,7 @@ def compute_mse_and_mae(
         pd.DataFrame: A DataFrame containing the predicted values.
 
     Returns:
-        tuple[float, float]: A tuple containing the MSE and MAE, in that order.
+        (tuple[float, float]): A tuple containing the MSE and MAE, in that order.
             - The first value is the MSE (Mean Squared Error).
             - The second value is the MAE (Mean Absolute Error).
     """
