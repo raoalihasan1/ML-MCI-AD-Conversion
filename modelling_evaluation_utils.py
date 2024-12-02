@@ -159,7 +159,11 @@ def evaluate_predictor_accuracy(
 
     Returns:
         pd.DataFrame: A DataFrame with each predictor's name and its accuracy score.
+
+    Raises:
+        ValueError: If an unsupported ensemble model is passed.
     """
+    # Get the base estimator depending on the ensemble type
     if isinstance(ensemble_model, VotingClassifier):
         base_estimators = ensemble_model.estimators
     elif isinstance(ensemble_model, StackingClassifier):
