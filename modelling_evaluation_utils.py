@@ -65,6 +65,7 @@ def create_ensemble_model(
     )
     compute_metrics = lambda y_true, y_pred: {
         "Accuracy": accuracy_score(y_true, y_pred),
+        "Error Rate": 1 - accuracy_score(y_true, y_pred),
         "F1-Score": f1_score(y_true, y_pred, average="weighted"),
         "Precision": precision_score(y_true, y_pred, average="weighted"),
         "Recall": recall_score(y_true, y_pred, average="weighted"),
@@ -146,24 +147,33 @@ def evaluate_predictor_accuracy(
     ensemble_model: StackingClassifier | VotingClassifier,
     X_test: pd.DataFrame,
     Y_test: pd.Series,
-) -> dict:
+) -> pd.DataFrame:
     """
-    Evaluate the accuracy of each individual predictor using the ensemble model.
+    Evaluate the accuracy of each individual predictor (base estimator)
+    in the ensemble model and represent the results as a DataFrame.
 
     Args:
-        (VotingClassifier | StackingClassifier): The ensemble model.
+        (StackingClassifier | VotingClassifier): The ensemble model.
         pd.DataFrame: The testing data features.
         pd.Series: The testing data labels.
 
     Returns:
-        dict: A dictionary with each predictor's name and its accuracy score.
+        pd.DataFrame: A DataFrame with each predictor's name and its accuracy score.
     """
-    feature_accuracies = {}
-    for feature in X_test.columns:
-        X_test_single = X_test[[feature]]
-        Y_pred = ensemble_model["model"].predict(X_test_single)
-        feature_accuracies[feature] = accuracy_score(Y_test, Y_pred)
-    return feature_accuracies
+    if isinstance(ensemble_model, VotingClassifier):
+        base_estimators = ensemble_model.estimators
+    elif isinstance(ensemble_model, StackingClassifier):
+        base_estimators = ensemble_model.named_estimators_.items()
+    else:
+        raise ValueError("Unsupported ensemble model type.")
+
+    feature_accuracies = []
+    for name, estimator in base_estimators:
+        Y_pred = estimator.predict(X_test)
+        accuracy = accuracy_score(Y_test, Y_pred)
+        feature_accuracies.append({"Estimator": name, "Accuracy": accuracy})
+
+    return pd.DataFrame(feature_accuracies)
 
 
 def split_data(
