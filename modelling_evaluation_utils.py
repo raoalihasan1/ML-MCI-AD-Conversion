@@ -1,10 +1,23 @@
-from matplotlib.pylab import rand
 import pandas as pd
 from enum import Enum
 from imblearn.over_sampling import ADASYN, RandomOverSampler, SMOTE
-from sklearn.ensemble import RandomForestClassifier
+from itertools import combinations
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.ensemble import (
+    RandomForestClassifier,
+    StackingClassifier,
+    VotingClassifier,
+)
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, make_scorer
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    make_scorer,
+    mean_absolute_error,
+    mean_squared_error,
+    precision_score,
+    recall_score,
+)
 from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
@@ -16,6 +29,141 @@ class Over_samplers(Enum):
     RANDOM = "Random"
     SMOTE = "SMOTE"
     ADASYN = "ADASYN"
+
+
+def create_ensemble_model(
+    cv_results: dict,
+    X_train: pd.DataFrame,
+    X_test: pd.DataFrame,
+    Y_train: pd.Series,
+    Y_test: pd.Series,
+) -> dict:
+    """
+    Create and evaluate ensemble models (StackingClassifier and VotingClassifier)
+    using the best estimators and returns the best ensemble model.
+
+    Args:
+        dict: The results from the `tune_hyperparameters` function.
+        pd.DataFrame: The training data features.
+        pd.DataFrame: The testing data features.
+        pd.Series: The training data labels.
+        pd.Series: The testing data labels.
+
+    Returns:
+        dict: A dictionary containing the information of the best ensemble model:
+            - "type" (str): ("StackingClassifier" or "VotingClassifier").
+            - "model" (object): The best ensemble model.
+            - "accuracy" (float): The accuracy of the best ensemble model.
+            - "estimators" (list): The base estimators used in the ensemble.
+            - "predicted_labels" (ndarray): Predicted labels for the test data.
+            - "predicted_prob" (ndarray): Predicted probabilities for the test set.
+            - "metrics" (dict): A dictionary of performance metrics.
+    """
+    model_accuracy = lambda prediction: accuracy_score(Y_test, prediction)
+    predicted_prob = lambda model: (
+        model.predict_proba(X_test)[:, 1] if hasattr(model, "predict_proba") else None
+    )
+    compute_metrics = lambda y_true, y_pred: {
+        "Accuracy": accuracy_score(y_true, y_pred),
+        "F1-Score": f1_score(y_true, y_pred, average="weighted"),
+        "Precision": precision_score(y_true, y_pred, average="weighted"),
+        "Recall": recall_score(y_true, y_pred, average="weighted"),
+        "Mean Squared Error": mean_squared_error(y_true, y_pred),
+        "Mean Absolute Error": mean_absolute_error(y_true, y_pred),
+    }
+
+    # Get the best estimators from the cv_results dictionary
+    estimators = [
+        (name, results["best_estimator"]) for name, results in cv_results.items()
+    ]
+
+    # Variables to store of the best model
+    best_model = None
+    best_accuracy = 0
+    best_estimators = None
+    best_predicted_labels = None
+    best_predicted_prob = None
+    best_metrics = None
+
+    # Iterate through all combinations of estimators
+    for i in range(1, len(estimators) + 1):
+        for comb in combinations(estimators, i):
+            comb = list(comb)
+
+            # Perform StackingClassification
+            stacking_classifier = StackingClassifier(
+                estimators=comb,
+                final_estimator=LogisticRegression(
+                    **cv_results["Logistic Regression"]["best_params"]
+                ),
+                cv=5,
+                n_jobs=-1,
+            )
+            stacking_classifier.fit(X_train, Y_train)
+            stacking_pred = stacking_classifier.predict(X_test)
+            stacking_accuracy = model_accuracy(stacking_pred)
+            stacking_prob = predicted_prob(stacking_classifier)
+
+            # Compare if this is the best model
+            if stacking_accuracy > best_accuracy:
+                best_model = stacking_classifier
+                best_accuracy = stacking_accuracy
+                best_estimators = comb
+                best_predicted_labels = stacking_pred
+                best_predicted_prob = stacking_prob
+                best_metrics = compute_metrics(Y_test, stacking_pred)
+
+            # Perform VotingClassification
+            voting_classifier = VotingClassifier(
+                estimators=comb, voting="soft", n_jobs=-1
+            )
+            voting_classifier.fit(X_train, Y_train)
+            voting_pred = voting_classifier.predict(X_test)
+            voting_accuracy = model_accuracy(voting_pred)
+            voting_prob = predicted_prob(voting_classifier)
+
+            # Compare if this is the best model
+            if voting_accuracy > best_accuracy:
+                best_model = voting_classifier
+                best_accuracy = voting_accuracy
+                best_estimators = comb
+                best_predicted_labels = voting_pred
+                best_predicted_prob = voting_prob
+                best_metrics = compute_metrics(Y_test, voting_pred)
+
+    # Return the best model, its accuracy, and other details
+    return {
+        "model": best_model,
+        "accuracy": best_accuracy,
+        "estimators": best_estimators,
+        "predicted_labels": best_predicted_labels,
+        "predicted_prob": best_predicted_prob,
+        "metrics": best_metrics,
+    }
+
+
+def evaluate_predictor_accuracy(
+    ensemble_model: StackingClassifier | VotingClassifier,
+    X_test: pd.DataFrame,
+    Y_test: pd.Series,
+) -> dict:
+    """
+    Evaluate the accuracy of each individual predictor using the ensemble model.
+
+    Args:
+        (VotingClassifier | StackingClassifier): The ensemble model.
+        pd.DataFrame: The testing data features.
+        pd.Series: The testing data labels.
+
+    Returns:
+        dict: A dictionary with each predictor's name and its accuracy score.
+    """
+    feature_accuracies = {}
+    for feature in X_test.columns:
+        X_test_single = X_test[[feature]]
+        Y_pred = ensemble_model["model"].predict(X_test_single)
+        feature_accuracies[feature] = accuracy_score(Y_test, Y_pred)
+    return feature_accuracies
 
 
 def split_data(
@@ -93,7 +241,7 @@ def tune_hyperparameters(
     Y_train: pd.Series,
     Y_test: pd.Series,
     random_state: int | None = 42,
-) -> dict[dict, dict, float, float]:
+) -> dict:
     """
     Perform hyperparameter tuning for multiple
     machine learning models using GridSearchCV.
@@ -111,6 +259,9 @@ def tune_hyperparameters(
             - "best_params" (dict): Best hyperparameter combination found.
             - "best_f1_score" (float): Best F1 score achieved during CV.
             - "best_accuracy" (float): Accuracy score of the best estimator on test data.
+            - "best_estimator" (object): The best trained model for each classifier.
+            - "predicted_labels" (ndarray): Predicted labels for the test data.
+            - "predicted_prob" (ndarray): Predicted probabilities for the test set.
     """
     # [0.001, 0.01, 0.1, 1, 10, 10]
     c = [10**i for i in range(-3, 2)]
@@ -166,31 +317,52 @@ def tune_hyperparameters(
             },
         },
     }
+
     scoring = {
         "f1_score": "f1_weighted",
         "accuracy": make_scorer(accuracy_score),
         "precision": "precision_weighted",
         "recall": "recall_weighted",
     }
+
     # Apply GridSearchCV for each model
     cv_results = {}
+    CV = 5
     for name, model_with_params in model_with_params.items():
         grid = GridSearchCV(
             model_with_params["Model"],
             model_with_params["Parameters"],
-            cv=5,
+            cv=CV,
             scoring=scoring,
             refit="f1_score",
             n_jobs=-1,
             verbose=False,
         )
         grid.fit(X_train, Y_train)
+        best_model = grid.best_estimator_
+
+        # Special handling for SVM, wrap with CalibratedClassifierCV
+        if name == "SVM":
+            best_model = CalibratedClassifierCV(best_model, cv=CV)
+            best_model.fit(X_train, Y_train)
+
+        Y_pred = best_model.predict(X_test)
+
+        # Get probabilities or decision scores
+        if hasattr(best_model, "predict_proba"):
+            Y_prob = best_model.predict_proba(X_test)[:, 1]
+        elif hasattr(best_model, "decision_function"):
+            Y_prob = best_model.decision_function(X_test)
+        else:
+            Y_prob = None
+
         cv_results[name] = {
             "cv_results": grid.cv_results_,
             "best_params": grid.best_params_,
             "best_f1_score": grid.best_score_,
-            "best_accuracy": accuracy_score(
-                Y_test, grid.best_estimator_.predict(X_test)
-            ),
+            "best_accuracy": accuracy_score(Y_test, Y_pred),
+            "best_estimator": best_model,
+            "predicted_labels": Y_pred,
+            "predicted_prob": Y_prob,
         }
     return cv_results
