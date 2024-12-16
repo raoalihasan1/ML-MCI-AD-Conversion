@@ -1,8 +1,12 @@
+import numpy as np
 import pandas as pd
+import random
+import seaborn as sns
 from enum import Enum
 from imblearn.over_sampling import ADASYN, RandomOverSampler, SMOTE
 from itertools import combinations
-from sklearn.calibration import CalibratedClassifierCV
+from matplotlib import pyplot as plt
+from sklearn.calibration import CalibratedClassifierCV, calibration_curve
 from sklearn.ensemble import (
     RandomForestClassifier,
     StackingClassifier,
@@ -11,14 +15,17 @@ from sklearn.ensemble import (
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
+    auc,
+    confusion_matrix,
     f1_score,
     make_scorer,
     mean_absolute_error,
     mean_squared_error,
     precision_score,
     recall_score,
+    roc_curve,
 )
-from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
@@ -143,6 +150,78 @@ def create_ensemble_model(
     }
 
 
+def evaluate_ensemble_model(
+    ensemble_model: StackingClassifier | VotingClassifier,
+    df: pd.DataFrame,
+    label_col: str,
+    n_splits: int = 10,
+    random_state: int | None = 42,
+) -> dict:
+    """
+    Evaluate the performance of an ensemble model using k-fold cross-validation.
+
+    Args:
+        (StackingClassifier | VotingClassifier): The ensemble model to be evaluated.
+        pd.DataFrame: The dataset containing features and the target label column.
+        label_col str: The name of the column containing the target labels.
+        (int, optional): The number of folds for stratified k-fold CV. (Default is 10)
+        (int | None, optional): Random seed for reproducibility. (Default is 42)
+
+    Returns:
+        dict: A dictionary containing the following evaluation statistics:
+            - Accuracy: Tuple of mean and std of accuracy scores across folds.
+            - F1-Score: Tuple of mean and std of F1-scores across folds.
+            - Precision: Tuple of mean and std of precision scores across folds.
+            - Recall: Tuple of mean and std of recall scores across folds.
+            - Confusion Matrix Normalized cumulative confusion matrix across all folds.
+            - True Labels List of true labels from all folds.
+            - Predicted Probabilities: List of predicted probabilities for
+                                       the positive class from all folds.
+    """
+    X = df.drop(columns=label_col)
+    Y = df[label_col]
+    k_fold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+    (
+        accuracy_scores,
+        all_probabilities,
+        all_true_labels,
+        f1_scores,
+        precision_scores,
+        recall_scores,
+    ) = (
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+    )
+    cumulative_confusion_matrix = np.zeros((2, 2), dtype=int)
+    for fold, (train_idx, test_idx) in enumerate(k_fold.split(X, Y), start=1):
+        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+        Y_train, Y_test = Y.iloc[train_idx], Y.iloc[test_idx]
+        ensemble_model.fit(X_train, Y_train)
+        Y_pred = ensemble_model.predict(X_test)
+        Y_prob = ensemble_model.predict_proba(X_test)[:, 1]
+        accuracy_scores.append(accuracy_score(Y_test, Y_pred))
+        all_true_labels.extend(Y_test)
+        all_probabilities.extend(Y_prob)
+        f1_scores.append(f1_score(Y_test, Y_pred))
+        precision_scores.append(precision_score(Y_test, Y_pred))
+        recall_scores.append(recall_score(Y_test, Y_pred))
+        cumulative_confusion_matrix += confusion_matrix(Y_test, Y_pred)
+    return {
+        "Accuracy": (np.mean(accuracy_scores), np.std(accuracy_scores)),
+        "F1-Score": (np.mean(f1_scores), np.std(f1_scores)),
+        "Precision": (np.mean(precision_scores), np.std(precision_scores)),
+        "Recall": (np.mean(recall_scores), np.std(recall_scores)),
+        "Confusion Matrix": cumulative_confusion_matrix
+        / np.sum(cumulative_confusion_matrix),
+        "True Labels": all_true_labels,
+        "Predicted Probabilities": all_probabilities,
+    }
+
+
 def evaluate_predictor_accuracy(
     ensemble_model: StackingClassifier | VotingClassifier,
     X_test: pd.DataFrame,
@@ -178,6 +257,130 @@ def evaluate_predictor_accuracy(
         feature_accuracies.append({"Estimator": name, "Accuracy": accuracy})
 
     return pd.DataFrame(feature_accuracies)
+
+
+def plot_ensemble_evaluation(results: dict, data_name: str, n_bins: int = 10) -> None:
+    """
+    Function to plot the evaluation metrics and visualizations for an ensemble model.
+
+    Args:
+        dict: The evaluation results dictionary containing metrics and confusion matrix.
+        str: The name of the data (e.g., 'BASE') to be displayed in the plot titles.
+        int: Number of bins to discretize the [0, 1] interval for the calibration curve.
+             (Default is 10)
+
+    Returns:
+        None
+    """
+    # Create subplots with 2 rows and 2 columns
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 10))
+
+    colors = ["red", "blue", "skyblue", "orange", "green", "yellow", "black"]
+
+    # Plot the confusion matrix on the first subplot (ax1)
+    sns.heatmap(
+        results["Confusion Matrix"] * 100,
+        annot=True,
+        fmt=".1f",
+        cmap="inferno_r",
+        xticklabels=["Stay In MCI", "Convert To AD"],
+        yticklabels=["Stay In MCI", "Convert To AD"],
+        annot_kws={"size": 11},
+        ax=ax1,
+    )
+    for text in ax1.texts:
+        text.set_text(f"{text.get_text()}%")
+    ax1.set_title(f"Confusion Matrix [{data_name}]")
+    ax1.set_xlabel("Predicted Label")
+    ax1.set_ylabel("True Label")
+
+    # Plot the ROC curve on the second subplot (ax2)
+    true_labels = results["True Labels"]
+    predicted_probabilities = results["Predicted Probabilities"]
+    fpr, tpr, _ = roc_curve(true_labels, predicted_probabilities)
+    roc_auc = auc(fpr, tpr)
+    ax2.plot(
+        fpr,
+        tpr,
+        color=random.choice(colors),
+        label=f"Area Under Curve = {roc_auc:.2f}",
+        linewidth=3,
+    )
+    ax2.plot([0, 1], [0, 1], color=random.choice(colors), linestyle="--")
+    ax2.set_title(f"ROC Curve [{data_name}]")
+    ax2.set_xlabel("False Positive Rate")
+    ax2.set_ylabel("True Positive Rate")
+    ax2.legend(loc="lower right")
+    ax2.grid(alpha=0.375)
+
+    # Plot the metrics bar chart on ax3
+    metrics = ["Accuracy", "F1-Score", "Precision", "Recall"]
+    mean_vals = [results[metric][0] for metric in metrics]
+    std_vals = [results[metric][1] for metric in metrics]
+    bars = ax3.bar(
+        metrics, mean_vals, yerr=std_vals, capsize=5, color=random.choice(colors)
+    )
+    ax3.set_ylim(0, 1)
+    ax3.set_xlabel("Metrics")
+    ax3.set_ylabel("Score")
+    ax3.set_title(f"Evaluation Metrics with Standard Deviations [{data_name}]")
+    legend_labels = [
+        f"{metric}: {mean:.2f} ± {std:.2f}"
+        for metric, mean, std in zip(metrics, mean_vals, std_vals)
+    ]
+    ax3.legend(bars, legend_labels, loc="lower right")
+
+    # Plot the calibration curve on ax4
+    fraction_of_positives, mean_predicted_value = calibration_curve(
+        results["True Labels"],
+        results["Predicted Probabilities"],
+        n_bins=10,
+    )
+    ax4.plot(
+        mean_predicted_value,
+        fraction_of_positives,
+        marker="o",
+        label="Calibration Curve",
+        color=random.choice(colors),
+        linewidth=3,
+    )
+    ax4.plot(
+        [0, 1],
+        [0, 1],
+        linestyle="--",
+        label="Perfectly Calibrated",
+        color=random.choice(colors),
+        linewidth=3,
+    )
+    ax4.set_title(f"Calibration Curve For Ensemble Model [{data_name}]")
+    ax4.set_xlabel("Mean Predicted Value")
+    ax4.set_ylabel("Fraction Of Positives")
+    ax4.legend()
+    ax4.grid(alpha=0.375)
+
+    plt.subplots_adjust(wspace=0.3, hspace=0.4)
+    plt.tight_layout()
+    plt.show()
+
+
+def pretty_print_ensemble_model_results(data_set_name: str, results: dict) -> None:
+    """
+    Prints the results of the model evaluation in a nicely formatted way.
+
+    Args:
+        str: The name of the CSV that the model was applied on.
+        dict: The output of the `evaluate_ensemble_model` function.
+
+    Returns:
+        None
+    """
+    results_copy = results.copy()
+    results_copy.pop("Confusion Matrix")
+    results_copy.pop("True Labels")
+    results_copy.pop("Predicted Probabilities")
+    print(f"Results for the {data_set_name} dataset using the ensemble model -")
+    for idx, (key, value) in enumerate(results_copy.items(), start=1):
+        print(f"{idx}. {key}:\t {round(value[0], 2)} ± {round(value[1], 2)}")
 
 
 def split_data(
