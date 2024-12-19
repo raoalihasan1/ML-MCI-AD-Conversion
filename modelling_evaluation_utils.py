@@ -23,6 +23,7 @@ from sklearn.metrics import (
     mean_squared_error,
     precision_score,
     recall_score,
+    roc_auc_score,
     roc_curve,
 )
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
@@ -173,6 +174,7 @@ def evaluate_ensemble_model(
             - F1-Score: Tuple of mean and std of F1-scores across folds.
             - Precision: Tuple of mean and std of precision scores across folds.
             - Recall: Tuple of mean and std of recall scores across folds.
+            - AUC: Tuple of mean and std of AUC scores across folds.
             - Confusion Matrix Normalized cumulative confusion matrix across all folds.
             - True Labels List of true labels from all folds.
             - Predicted Probabilities: List of predicted probabilities for
@@ -183,12 +185,14 @@ def evaluate_ensemble_model(
     k_fold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
     (
         accuracy_scores,
+        auc_scores,
         all_probabilities,
         all_true_labels,
         f1_scores,
         precision_scores,
         recall_scores,
     ) = (
+        [],
         [],
         [],
         [],
@@ -203,24 +207,28 @@ def evaluate_ensemble_model(
         ensemble_model.fit(X_train, Y_train)
         Y_pred = ensemble_model.predict(X_test)
         Y_prob = ensemble_model.predict_proba(X_test)[:, 1]
+
+        # Calculate metrics for the current fold
         accuracy_scores.append(accuracy_score(Y_test, Y_pred))
+        auc_scores.append(roc_auc_score(Y_test, Y_prob))
         all_true_labels.extend(Y_test)
         all_probabilities.extend(Y_prob)
         f1_scores.append(f1_score(Y_test, Y_pred))
         precision_scores.append(precision_score(Y_test, Y_pred))
         recall_scores.append(recall_score(Y_test, Y_pred))
         cumulative_confusion_matrix += confusion_matrix(Y_test, Y_pred)
+
     return {
         "Accuracy": (np.mean(accuracy_scores), np.std(accuracy_scores)),
         "F1-Score": (np.mean(f1_scores), np.std(f1_scores)),
         "Precision": (np.mean(precision_scores), np.std(precision_scores)),
         "Recall": (np.mean(recall_scores), np.std(recall_scores)),
+        "AUC": (np.mean(auc_scores), np.std(auc_scores)),
         "Confusion Matrix": cumulative_confusion_matrix
         / np.sum(cumulative_confusion_matrix),
         "True Labels": all_true_labels,
         "Predicted Probabilities": all_probabilities,
     }
-
 
 def evaluate_predictor_accuracy(
     ensemble_model: StackingClassifier | VotingClassifier,
@@ -380,7 +388,8 @@ def pretty_print_ensemble_model_results(data_set_name: str, results: dict) -> No
     results_copy.pop("Predicted Probabilities")
     print(f"Results for the {data_set_name} dataset using the ensemble model -")
     for idx, (key, value) in enumerate(results_copy.items(), start=1):
-        print(f"{idx}. {key}:\t {round(value[0], 2)} ± {round(value[1], 2)}")
+        tabs = f"\t\t" if key == "AUC" else f"\t"
+        print(f"{idx}. {key}:{tabs} {round(value[0], 2)} ± {round(value[1], 2)}")
 
 
 def split_data(
