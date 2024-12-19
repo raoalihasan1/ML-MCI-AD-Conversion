@@ -158,14 +158,13 @@ def evaluate_ensemble_model(
     random_state: int | None = 42,
 ) -> dict:
     """
-    Evaluate the performance of an ensemble model using
-    k-fold cross-validation and ADASYN oversampling.
+    Evaluate the performance of an ensemble model using k-fold cross-validation.
 
     Args:
         (StackingClassifier | VotingClassifier): The ensemble model to be evaluated.
         pd.DataFrame: The dataset containing features and the target label column.
         label_col str: The name of the column containing the target labels.
-        (int, optional): The number of folds for stratified k-fold CV. (Default is 10)
+        (int, optional): The number of folds for stratified k-fold CV. (Default is 4)
         (int | None, optional): Random seed for reproducibility. (Default is 42)
 
     Returns:
@@ -201,9 +200,6 @@ def evaluate_ensemble_model(
     for train_idx, test_idx in k_fold.split(X, Y):
         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
         Y_train, Y_test = Y.iloc[train_idx], Y.iloc[test_idx]
-        X_train, Y_train = over_sample_data(
-            Over_samplers.ADASYN, X_train, Y_train, random_state
-        )
         ensemble_model.fit(X_train, Y_train)
         Y_pred = ensemble_model.predict(X_test)
         Y_prob = ensemble_model.predict_proba(X_test)[:, 1]
