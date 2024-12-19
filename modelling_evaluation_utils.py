@@ -154,11 +154,12 @@ def evaluate_ensemble_model(
     ensemble_model: StackingClassifier | VotingClassifier,
     df: pd.DataFrame,
     label_col: str,
-    n_splits: int = 10,
+    n_splits: int = 4,
     random_state: int | None = 42,
 ) -> dict:
     """
-    Evaluate the performance of an ensemble model using k-fold cross-validation.
+    Evaluate the performance of an ensemble model using
+    k-fold cross-validation and ADASYN oversampling.
 
     Args:
         (StackingClassifier | VotingClassifier): The ensemble model to be evaluated.
@@ -197,9 +198,12 @@ def evaluate_ensemble_model(
         [],
     )
     cumulative_confusion_matrix = np.zeros((2, 2), dtype=int)
-    for fold, (train_idx, test_idx) in enumerate(k_fold.split(X, Y), start=1):
+    for train_idx, test_idx in k_fold.split(X, Y):
         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
         Y_train, Y_test = Y.iloc[train_idx], Y.iloc[test_idx]
+        X_train, Y_train = over_sample_data(
+            Over_samplers.ADASYN, X_train, Y_train, random_state
+        )
         ensemble_model.fit(X_train, Y_train)
         Y_pred = ensemble_model.predict(X_test)
         Y_prob = ensemble_model.predict_proba(X_test)[:, 1]
