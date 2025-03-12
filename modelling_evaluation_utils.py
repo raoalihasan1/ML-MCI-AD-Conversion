@@ -301,6 +301,8 @@ def plot_ensemble_evaluation(results: dict, data_name: str, n_bins: int = 10) ->
     ax1.set_title(f"Confusion Matrix [{data_name}]")
     ax1.set_xlabel("Predicted Label")
     ax1.set_ylabel("True Label")
+    ax1.xaxis.set_tick_params(labelsize=11)
+    ax1.yaxis.set_tick_params(labelsize=11)
 
     # Plot the ROC curve on the second subplot (ax2)
     true_labels = results["True Labels"]
@@ -320,6 +322,8 @@ def plot_ensemble_evaluation(results: dict, data_name: str, n_bins: int = 10) ->
     ax2.set_ylabel("True Positive Rate")
     ax2.legend(loc="lower right")
     ax2.grid(alpha=0.375)
+    ax2.xaxis.set_tick_params(labelsize=11)
+    ax2.yaxis.set_tick_params(labelsize=11)
 
     # Plot the metrics bar chart on ax3
     metrics = ["Accuracy", "F1-Score", "Precision", "Recall"]
@@ -337,6 +341,8 @@ def plot_ensemble_evaluation(results: dict, data_name: str, n_bins: int = 10) ->
         for metric, mean, std in zip(metrics, mean_vals, std_vals)
     ]
     ax3.legend(bars, legend_labels, loc="lower right")
+    ax3.xaxis.set_tick_params(labelsize=11)
+    ax3.yaxis.set_tick_params(labelsize=11)
 
     # Plot the calibration curve on ax4
     fraction_of_positives, mean_predicted_value = calibration_curve(
@@ -365,6 +371,8 @@ def plot_ensemble_evaluation(results: dict, data_name: str, n_bins: int = 10) ->
     ax4.set_ylabel("Fraction Of Positives")
     ax4.legend()
     ax4.grid(alpha=0.375)
+    ax4.xaxis.set_tick_params(labelsize=11)
+    ax4.yaxis.set_tick_params(labelsize=11)
 
     plt.subplots_adjust(wspace=0.3, hspace=0.4)
     plt.tight_layout()
@@ -411,6 +419,7 @@ def split_data(
         (X_train, X_test, Y_train, Y_test): The data and labels split into
                                             training and testing datasets.
     """
+
     # Remove the column that will be used as the label
     X = df.drop(columns=label_col)
     Y = df[label_col]
